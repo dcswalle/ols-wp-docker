@@ -1,11 +1,18 @@
 version: '3'
 services:
+  #####################################################
+  ## MariaDB - SQL Server for web applications       ##
+  ## DevSolutions.Ro configuration                   ##
+  #####################################################
   mysql:
+    container_name: mysql
     image: mariadb:10.5.9
     logging:
       driver: none
     command: --max_allowed_packet=256M
     volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
       - "./data/db:/var/lib/mysql:delegated"
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
@@ -13,15 +20,18 @@ services:
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
     restart: always
-    networks:
-      - default
+  #####################################################
+  ## Litespeed - Litespeed used for all web services ##
+  ## DevSolutions.Ro configuration                   ##
+  #####################################################
   litespeed:
+    container_name: webserver
     image: litespeedtech/openlitespeed:${OLS_VERSION}-${PHP_VERSION}
-    logging:
-      driver: none
     env_file:
       - .env
     volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
       - ./lsws/conf:/usr/local/lsws/conf
       - ./lsws/admin-conf:/usr/local/lsws/admin/conf
       - ./bin/container:/usr/local/bin
@@ -29,16 +39,34 @@ services:
       - ./acme:/root/.acme.sh/
       - ./logs:/usr/local/lsws/logs/
     ports:
-      - 80:80
-      - 443:443
-      - 443:443/udp
-      - 7080:7080
+      - target: 80
+        published: 80
+        protocol: tcp
+        mode: host
+      - target: 443
+        published: 443
+        protocol: tcp
+        mode: host
+      - target: 7080
+        published: 7080
+        protocol: tcp
+        mode: host
+      - target: 443
+        published: 443
+        protocol: udp
+        mode: host
     restart: always
     environment:
       TZ: ${TimeZone}
-    networks:
-      - default
+    links:
+      - mysql
+      - redis
+  #####################################################
+  ## PHPMyAdmin container                            ##
+  ## DevSolutions.Ro configuration                   ##
+  #####################################################
   phpmyadmin:
+    container_name: phpmyadmin
     image: bitnami/phpmyadmin:5.2.0-debian-11-r43
     ports:
       - 8080:8080
@@ -48,6 +76,18 @@ services:
     restart: always
     networks:
       - default
-networks:
-  default:
-    driver: bridge
+  #####################################################
+  ## Redis container - cache                         ##
+  ## DevSolutions.Ro configuration                   ##
+  #####################################################
+  redis:
+    container_name: redis
+    image: redis:6.2-alpine
+    restart: always
+    ports:
+      - '6379:6379'
+    command: redis-server --save 20 1 --loglevel warning --maxmemory 512mb --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+      - ./cache:/data
